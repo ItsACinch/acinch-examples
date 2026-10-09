@@ -1,0 +1,21 @@
+{
+  "render_mode": "card",
+  "fields": [
+    { "key": "state", "label": "State", "type": "text" },
+    { "key": "service", "label": "Service", "type": "text" },
+    { "key": "version", "label": "Version", "type": "text" },
+    { "key": "requested_by", "label": "Requested by", "type": "text" },
+    { "key": "decided_by", "label": "Decided by", "type": "text" }
+  ],
+  "subtitle": "{{fields.service}} {{fields.version}}, requested by {{fields.requested_by}}",
+  "badge": { "field": "state", "tones": { "pending": "warning", "approved": "success", "rejected": "danger" } },
+  "detail_fields": ["service", "version", "requested_by", "decided_by"],
+  "actions": [
+    { "id": "changes", "label": "View changes", "kind": "link", "url": "{{url}}" },
+    { "id": "approve", "label": "Approve", "kind": "callback" },
+    { "id": "reject", "label": "Reject", "kind": "callback" }
+  ],
+  "labels": {
+    "de": { "state": "Status", "service": "Dienst", "requested_by": "Angefordert von", "decided_by": "Entschieden von" }
+  }
+}

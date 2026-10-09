@@ -1,0 +1,12 @@
+{
+  "name": "acinch-examples",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Example apps for the ACinch developer platform",
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=18.3" },
+  "scripts": {
+    "test": "node test/run.mjs"
+  }
+}

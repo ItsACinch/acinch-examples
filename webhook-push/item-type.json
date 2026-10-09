@@ -1,0 +1,11 @@
+{
+  "render_mode": "card",
+  "fields": [
+    { "key": "level", "label": "Level", "type": "text" },
+    { "key": "source", "label": "Source", "type": "text" }
+  ],
+  "subtitle": "{{fields.source}}",
+  "badge": { "field": "level", "tones": { "info": "info", "warning": "warning", "danger": "danger", "success": "success" } },
+  "detail_fields": ["level", "source"],
+  "actions": []
+}
