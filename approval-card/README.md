@@ -1,13 +1,13 @@
 # Approval card
 
-A deploy approval that lives in ACinch. `request.mjs` puts a card in each approver's feed with **View changes**,
-**Approve** and **Reject** buttons. A click on Approve or Reject is delivered to `server.mjs` as a signed
+A deploy approval that lives in ACinch. `request` puts a card in each approver's feed with **View changes**,
+**Approve** and **Reject** buttons. A click on Approve or Reject is delivered to `server` as a signed
 `item.action` event; the server checks the signature, then calls the API back to mark the card approved or rejected.
 
 ```
-request.mjs ──PUT item──▶ ACinch ──card──▶ approver clicks Approve
-                            │
-                            └──signed item.action──▶ server.mjs ──GET + PUT item──▶ ACinch (card turns green)
+request ──PUT item──▶ ACinch ──card──▶ approver clicks Approve
+                        │
+                        └──signed item.action──▶ server ──GET + PUT item──▶ ACinch (card turns green)
 ```
 
 ## Set up
@@ -17,7 +17,7 @@ request.mjs ──PUT item──▶ ACinch ──card──▶ approver clicks A
 2. Install the app in your workspace and set `ACINCH_CLIENT_ID`, `ACINCH_CLIENT_SECRET` and `ACINCH_INSTALLATION_ID`.
 3. Start the server and give it a public https URL. Locally, a tunnel works:
    ```bash
-   node server.mjs                                   # listening on http://localhost:3000/acinch/events
+   node node/server.mjs                              # or: node typescript/server.ts, or: python python/server.py
    cloudflared tunnel --url http://localhost:3000    # or ngrok http 3000
    ```
 4. In the portal set the app's **event endpoint URL** to `https://<tunnel host>/acinch/events`, create a
@@ -26,7 +26,7 @@ request.mjs ──PUT item──▶ ACinch ──card──▶ approver clicks A
 ## Run
 
 ```bash
-APPROVERS=alex@example.com,sam@example.com node request.mjs checkout 2.4.0 https://github.com/acme/checkout/compare/v2.3.0...v2.4.0
+APPROVERS=alex@example.com,sam@example.com node node/request.mjs checkout 2.4.0 https://github.com/acme/checkout/compare/v2.3.0...v2.4.0
 # requested approval-checkout-2.4.0
 ```
 
@@ -34,14 +34,17 @@ Alex clicks **Approve**. The server logs `approval-checkout-2.4.0: approved by a
 turns green with "Decided by alex@example.com". If Sam clicks **Reject** afterwards, nothing changes: the first
 decision wins.
 
+Each language folder has the same four files: `acinch` (API client), `verify` (signature check), `request` and
+`server`. Mix them freely: a Python server answers cards a Node script requested.
+
 ## What to notice
 
-- **Verify before you trust.** [`verify.mjs`](verify.mjs) checks `ACinch-Signature` (HMAC-SHA256 over
+- **Verify before you trust.** `verify` checks `ACinch-Signature` (HMAC-SHA256 over
   `<timestamp>.<raw body>`) and rejects anything older than five minutes. Verify the raw bytes, never re-serialized JSON.
 - **Delivery is at-least-once.** The server remembers `ACinch-Event-Id`s it has handled and acknowledges duplicates
   without acting. It records an event only after handling succeeds, and answers 500 on failure so ACinch retries.
   The example keeps ids in memory; use your database in production.
-- **The event says which installation.** `data.installation_id` picks the token ([`acinch.mjs`](acinch.mjs) caches
+- **The event says which installation.** `data.installation_id` picks the token (the `acinch` client caches
   one per installation), so the same server works for every workspace that installs your app.
 - **`PUT` replaces the whole item.** The server reads the item first and sends everything back, including its
   audience and link, with the decision filled in.

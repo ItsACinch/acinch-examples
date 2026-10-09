@@ -15,11 +15,13 @@ No OAuth and no token: an **incoming webhook URL** is the whole credential.
 ## Run
 
 ```bash
-node push.mjs "Disk 91% full on db-1" --level danger --source db-1 --key disk-db-1
+node node/push.mjs "Disk 91% full on db-1" --level danger --source db-1 --key disk-db-1
 # created disk-db-1
-node push.mjs "Disk back to 60% on db-1" --level success --source db-1 --key disk-db-1
+node node/push.mjs "Disk back to 60% on db-1" --level success --source db-1 --key disk-db-1
 # updated disk-db-1
 ```
+
+The same arguments work with `node typescript/push.ts` and `python python/push.py`.
 
 The second push turns the same red card green instead of adding a second one, because both use the same `--key`
 (sent as the `Idempotency-Key` header). Leave `--key` out and every push is a new card.
