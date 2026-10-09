@@ -11,9 +11,9 @@ The smallest ACinch app: trade your app's credentials for a token, then `PUT` on
 ## Run
 
 ```bash
-node hello.mjs
+node node/hello.mjs              # or: node typescript/hello.ts, or: python python/hello.py
 # created hello-world
-node hello.mjs
+node node/hello.mjs
 # updated hello-world
 ```
 
@@ -24,6 +24,6 @@ A "Hello, world!" card appears in your ACinch feed. Run it again and the same ca
 
 - **One token per installation.** `POST /oauth/token` with `grant_type=client_credentials` and the `installation_id`
   returns a bearer token valid for an hour. Reuse it rather than minting one per request
-  (see [`approval-card/acinch.mjs`](../approval-card/acinch.mjs) for a cached client).
+  (see the `acinch` client in [`approval-card`](../approval-card) for a cached one).
 - **No audience means the installer.** Add `"audience": { "users": ["alex@example.com"] }` to show it to someone else
   in the workspace.

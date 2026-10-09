@@ -4,13 +4,28 @@ permissions:
   contents: read
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04 # still has Python 3.8 builds
     strategy:
       matrix:
+        # 18 and 20 run the Node and Python examples; 22 runs all three languages (TypeScript needs 22.18+).
         node: [18, 20, 22]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.8'
       - run: npm test
+        env:
+          EXAMPLES_REQUIRE_ALL: ${{ matrix.node == 22 && '1' || '0' }}
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run typecheck

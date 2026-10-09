@@ -1,7 +1,7 @@
 // npm test - runs every example against a small in-process stand-in for the ACinch API and checks what it stored.
 // The stand-in implements only what the examples call; the real API validates far more (types, audiences, limits).
 import assert from 'node:assert/strict'
-import { execFile, spawn } from 'node:child_process'
+import { execFile, spawn, spawnSync } from 'node:child_process'
 import crypto from 'node:crypto'
 import http from 'node:http'
 import path from 'node:path'
@@ -48,31 +48,46 @@ await new Promise((r) => api.listen(0, '127.0.0.1', r))
 const base = `http://127.0.0.1:${api.address().port}`
 const env = { ...process.env, ACINCH_BASE_URL: base, ACINCH_CLIENT_ID: CLIENT.id, ACINCH_CLIENT_SECRET: CLIENT.secret, ACINCH_INSTALLATION_ID: CLIENT.installation }
 
-const run = (file, args = [], extra = {}) => new Promise((resolve, reject) =>
-  execFile(process.execPath, [path.join(ROOT, file), ...args], { env: { ...env, ...extra } }, (err, out, errOut) =>
-    (err ? reject(new Error(`${file} failed:\n${out}${errOut}`)) : resolve(out))))
+// Each example in each language. TypeScript needs Node 22.18+ (type stripping); Python needs 3.8+ on PATH.
+const python = ['python3', 'python', 'py'].find((p) => spawnSync(p, ['-c', 'import sys; assert sys.version_info >= (3, 8)']).status === 0)
+const LANGS = {
+  node: { cmd: process.execPath, ext: 'mjs', skip: null },
+  typescript: { cmd: process.execPath, ext: 'ts', skip: process.features.typescript ? null : `Node ${process.version} cannot run .ts (needs 22.18+)` },
+  python: { cmd: python, ext: 'py', skip: python ? null : 'no python 3.8+ on PATH' },
+}
+const strict = process.env.EXAMPLES_REQUIRE_ALL === '1'
 
-try {
+const run = (lang, file, args = [], extra = {}) => new Promise((resolve, reject) => {
+  const { cmd, ext } = LANGS[lang]
+  execFile(cmd, [path.join(ROOT, `${file}.${ext}`), ...args], { env: { ...env, ...extra } }, (err, out, errOut) =>
+    (err ? reject(new Error(`${lang} ${file} failed:\n${out}${errOut}`)) : resolve(out)))
+})
+
+async function check(lang) {
+  items.clear()
   // hello-world: same ID twice is one item
-  assert.match(await run('hello-world/hello.mjs'), /^created hello-world/)
-  assert.match(await run('hello-world/hello.mjs'), /^updated hello-world/)
+  assert.match(await run(lang, `hello-world/${lang}/hello`), /^created hello-world/)
+  assert.match(await run(lang, `hello-world/${lang}/hello`), /^updated hello-world/)
   assert.equal(items.get('hello-world').type, 'hello')
 
   // webhook-push: same key updates the card
   const hookEnv = { ACINCH_HOOK_URL: `${base}/api/v1/hooks/${HOOK}` }
-  assert.match(await run('webhook-push/push.mjs', ['Disk 91% full', '--level', 'danger', '--source', 'db-1', '--key', 'disk-db-1'], hookEnv), /^created disk-db-1/)
-  assert.match(await run('webhook-push/push.mjs', ['Disk back to 60%', '--level', 'success', '--source', 'db-1', '--key', 'disk-db-1'], hookEnv), /^updated disk-db-1/)
+  assert.match(await run(lang, `webhook-push/${lang}/push`, ['Disk 91% full', '--level', 'danger', '--source', 'db-1', '--key', 'disk-db-1'], hookEnv), /^created disk-db-1/)
+  assert.match(await run(lang, `webhook-push/${lang}/push`, ['Disk back to 60%', '--level', 'success', '--source', 'db-1', '--key', 'disk-db-1'], hookEnv), /^updated disk-db-1/)
   assert.deepEqual(items.get('disk-db-1').fields, { level: 'success', source: 'db-1' })
 
   // approval-card: request, then a signed click
   const ext = 'approval-checkout-2.4.0'
-  await run('approval-card/request.mjs', ['checkout', '2.4.0', 'https://example.com/diff'], { APPROVERS: 'alex@example.com' })
+  await run(lang, `approval-card/${lang}/request`, ['checkout', '2.4.0', 'https://example.com/diff'], { APPROVERS: 'alex@example.com' })
   assert.equal(items.get(ext).fields.state, 'pending')
 
-  const server = spawn(process.execPath, [path.join(ROOT, 'approval-card/server.mjs')], { env: { ...env, ACINCH_SIGNING_SECRET: SIGNING_SECRET, PORT: '0' } })
+  const server = spawn(LANGS[lang].cmd, [path.join(ROOT, `approval-card/${lang}/server.${LANGS[lang].ext}`)],
+    { env: { ...env, ACINCH_SIGNING_SECRET: SIGNING_SECRET, PORT: '0' } })
+  let log = ''
+  server.stderr.on('data', (d) => (log += d))
   const port = await new Promise((resolve, reject) => {
-    server.stdout.on('data', (d) => { const p = /localhost:(\d+)/.exec(String(d)); if (p) resolve(p[1]) })
-    server.on('exit', (code) => reject(new Error(`server.mjs exited ${code}`)))
+    server.stdout.on('data', (d) => { log += d; const p = /localhost:(\d+)/.exec(String(d)); if (p) resolve(p[1]) })
+    server.on('exit', (code) => reject(new Error(`${lang} server exited ${code}:\n${log}`)))
   })
   const click = (id, action, email, secret = SIGNING_SECRET) => {
     const body = JSON.stringify({ id, type: 'item.action', created_at: new Date().toISOString(),
@@ -90,12 +105,27 @@ try {
     assert.equal(decided.fields.decided_by, 'alex@example.com')
     assert.equal(decided.url, 'https://example.com/diff', 'PUT kept the link')
     assert.deepEqual(decided.audience.users, ['alex@example.com'], 'PUT kept the audience')
+    assert.equal((await click('evt_1', 'reject', 'sam@example.com')).status, 200, 'duplicate event id is acknowledged')
     assert.equal((await click('evt_2', 'reject', 'sam@example.com')).status, 200)
     assert.equal(items.get(ext).fields.state, 'approved', 'first decision wins')
   } finally {
     server.kill()
   }
-  console.log('all examples passed')
+}
+
+try {
+  let skipped = 0
+  for (const [lang, { skip }] of Object.entries(LANGS)) {
+    if (skip) {
+      if (strict) throw new Error(`${lang}: ${skip}`)
+      console.log(`SKIP ${lang}: ${skip}`)
+      skipped++
+      continue
+    }
+    await check(lang)
+    console.log(`ok   ${lang}`)
+  }
+  console.log(skipped ? `passed, ${skipped} language(s) skipped` : 'all examples passed')
 } finally {
   api.close()
 }
